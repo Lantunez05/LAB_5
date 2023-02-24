@@ -1,4 +1,4 @@
-/* Archivo: Main.S
+/* Archivo: LAB_5.S
    Dispositivo: PIC16F887
    Autor: Luis Antunez
    Compilador: pic-as (v2.30), MPLABX V5.40
@@ -8,7 +8,7 @@
    Hardware: "Leds, pushbuttons, displays, resistencias."
      
    Cread: 19/02/2021
-   Ultima modificación: 23/02/2023 
+   Ultima modificación: 24/02/2023 
  */
 
 PROCESSOR 16F887
@@ -39,7 +39,7 @@ STATUS_TEMP: DS 1; 1 byte reservado
 contador:	DS 1; 1 byte
 cont:	DS 1
     
-display:	DS 2
+display:	DS 3
 nibble:	DS 2
 banderas:	DS 1
     
@@ -81,7 +81,7 @@ tabla:			; Tabla para los displays
 ;---------------------------------------------------------------    
 re_timer0   MACRO
     BANKSEL TMR0    // llamar al banco 0
-    MOVLW 256 ; valor para incrementos de 100ms
+    MOVLW 246 ; valor para incrementos de 100ms
     MOVWF TMR0	// Cargar el valor para los incrementos al timer0
     BCF INTCON,2    ; Limpiar bandera de overflow del timer0
     endm
@@ -93,11 +93,10 @@ push:
     swapf STATUS, W
     movwf STATUS_TEMP
 isr:
-    BANKSEL PORTA
-    BTFSC RBIF
-    call inter_IOCB
-    BTFSC T0IF
-    call inter_timer0
+    BTFSC RBIF	    ; interrupcion del los pushbuttons
+    call inter_IOCB	    ; sub rutina de interrupcion para los pushbuttons
+    BTFSC T0IF	    ; interrupcion del timer0
+    call inter_timer0   ; sub rutina de interrupcion del timer0
 pop:
     swapf STATUS_TEMP, W
     movwf STATUS
@@ -111,13 +110,9 @@ inter_IOCB:
     banksel PORTB   ; Selecion del banco del Pueto B
     btfss   PORTB, 0  ; Revisar si el pin 0 del puerto B es 1
     incf    PORTA	    ; Si no es 1 incrementa el puerto A
-    //movf    PORTA,W    ; Mueve el valor de PORTA a W
-    //movwf   cont	    ; Mueve el contenido de W a una variable llamada cont
     
     btfss   PORTB,1   ; Revisar si el pin 1 del puerto B es 1
     decf    PORTA	    ; Si no es 1 se decrementa el puerto A
-    //movf    PORTA,W    ; Mueve el valor de PORTA a W
-    //movwf   cont	    ; Mueve el contenido de W a una variable llamada cont
     bcf	    RBIF	    ; Se limpia la bandera de interrupciones
     return
 ;-------------------Subrutina de interrupcion timer0----------------------------------------   
@@ -130,32 +125,33 @@ inter_timer0:
 toggle_disp:
     bcf	    PORTD,0   
     bcf	    PORTD,1
-    bcf	    PORTD,2   ; Pines del 0-1 apagados
+    bcf	    PORTD,2   ; Pines del 0-1 en cero
     
     btfsc   banderas,1  ; revisa la bandera 1 si esta en cero
     goto    display_3   ; Si no esta en o va al tercer display
-    btfsc   banderas,0
+    btfsc   banderas,0  ; Verificamos si la bandera esta
     goto    display_1
     goto    display_2
     return
     
-display_1:
+display_1: ;centenas
     movf      display, W	; Mueve el display a W
     movwf     PORTC		; Mueve el contenido de W al PORTC
     bsf	    PORTD,0	; Habilita el ping 0 del PORTC
     bcf	    banderas,0	
     bsf	    banderas,1
     return
-display_2:
-    movf    display+1, W
-    movwf   PORTC
-    bsf	  PORTD,1
+display_2:; decenas
+    movf    display+1, W	; Mueve el display+1 a W
+    movwf   PORTC		; Movemos el contenido de W a PORTC
+    bsf	  PORTD,1		; Habilita el ping 1 del PORTD
     bsf	  banderas,0
+    bcf	  banderas,1
     return
-display_3:
-    movf      display+2, W
-    movwf	    PORTC
-    bsf	    PORTD,2
+display_3:  ; unidades
+    movf      display+2, W	; Mueve el display+2 a W
+    movwf	    PORTC		; Movemos el contenido de W a PORTC
+    bsf	    PORTD,2	; Habilita el ping 2 del PORTD
     bcf	    banderas,0
     bcf	    banderas,1
     return
@@ -168,62 +164,55 @@ main:
     call config_timer0	; Configuracion del timer0
     call config_inter	; Activar las interrupciones
     
-    movlw 10; Asignar un valor al contador
-    movwf contador; Mover el valor asignador al contador
     banksel PORTA 
     clrf    banderas
 ;--------------------------------------------------------------
     
 loop:
-    //call sep_nibble
-    call    prep_disp
-    movf    PORTA,W
-    movwf   cont  
+    
+    movf    PORTA,W	    ; Mover el valor de PORTA a W
+    movwf   cont	    ; Mover el valor en W a la variable cont
+    call    prep_disp   ; Llamar a a la sub rutina para preparar los displays
+    
+	  ;Limpiar unidades centenas y decenas
     clrf    decenas
     clrf    centenas
     clrf    unidades
+	  ;Funciones para asiganar a cada display una variable (unidad, decenas y centenas)
     
-    call    conv_dec
-    call    conv_cen
-    call    conv_uni
+    call    conv_cen    ; centenas 
+    call    conv_dec    ; decimal
+    call    conv_uni    ; unidades
     goto    loop
     
-/*sep_nibble:
-    movf cont, W
-    andlw 00001111B
-    movwf nibble
-    swapf cont, W
-    andlw 00001111B
-    movwf nibble+1
-    return*/
 
 prep_disp:
-    movf    decenas, w
-    call    tabla
-    movwf   display
+    movf    decenas, w	;mueve la variable decenas a w
+    call    tabla		;llamamos a la tabla del display
+    movwf   display+1	;movemos el valor de W al display asignado con displa+1
     
-    movf    centenas, w
-    call    tabla
-    movwf   display+1
+    movf    centenas, w	;mueve la variable centenas a w
+    call    tabla		;llamamos a la tabla del display
+    movwf   display		;movemos el valor de W al display asignado con displa
     
-    movf    unidades, w
-    call    tabla
-    movwf   display+2
+    movf    unidades, w	;mueve la variable centenas a w
+    call    tabla		;llamamos a la tabla del display
+    movwf   display+2	;movemos el valor de W al display asignado con displa+2
     return
     
     
 conv_dec:
-    movlw   10
-    subwf   cont,F
-    incf    decenas
-    btfsc   STATUS,0
-    goto    $-4
-    decf    decenas
-    movlw   10
-    addwf   cont,F
+    movlw   10	    ;movemos el valor de 10 a W
+    subwf   cont,F	    ;restamos W con la variable cont
+    incf    decenas	    ;Incrementamos la variable decenas
+    btfsc   STATUS,0    ;Verificamos si hay borrow
+    goto    $-4	    ;En caso que no, se vuelve a iniciar la rutina
+    decf    decenas	    ;En caso que si, se decrementa la variable decentas
+    movlw   10	    ; Se vuelve cargar el valor de 10 a A
+    addwf   cont,F	    ; Se efectua la suma de W con la variable cont
     return
     
-conv_cen:
+conv_cen:	  ;Se repite el mismo proceso que la sub rutina anterior con la diferencia que se carga un valor 100
     movlw   100
     subwf   cont,F
     incf    centenas
@@ -234,7 +223,7 @@ conv_cen:
     addwf   cont,F
     return 
     
-conv_uni:
+conv_uni:	  ; Se repite el mismo proceso que la sub rutina anterior con la diferencia que se carga un valor 1
     movlw   1
     subwf   cont,F
     incf    unidades
@@ -244,6 +233,7 @@ conv_uni:
     movlw   1
     addwf   cont,F
     return
+    
 ;--------------------Seccion de configuracion general-----------------------    
 config_IOCRB:
     banksel TRISA
@@ -262,7 +252,7 @@ config_puertos:
     clrf	  ANSELH  ; Declaramos el uso de pines digitales
     
     banksel TRISA ; banco 01
-    clrf	  TRISA 
+    clrf	  TRISA	 ; D
     clrf	  TRISC
     clrf	  TRISD
     
@@ -308,12 +298,7 @@ config_timer0:
     BSF PS0	    ; prescaler 256
     
     banksel PORTA; cambio al banco 0
-    
-    
-
     re_timer0 ; Llamamos a la sub rutina de reseteo del timer0
-    //BCF T0IF; APAGAR INTERRUPCIONES
-    //BSF T0IE
-    //BSF GIE
     return 
 END
+    
